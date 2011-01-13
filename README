@@ -1,4 +1,4 @@
-This will be hopefully get to a fully working js implementation based idea in java "Remote Method Invocation". 
+This will be hopefully get to a fully working js implementation based pattern from java's "Remote Method Invocation". 
 
 There is no network protocol defined between client and server, so don't try to connect to a java backend 
 this is not intended.
