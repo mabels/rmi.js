@@ -18,10 +18,13 @@ BaseTest.prototype.createDB = function(database, call) {
   call()
   return new function(database){
     this.database = database
+    this.save = function(data, cb) {
+      cb(data+data)
+    }
   }(database)
 }
-*/
 
+*/
 var HandleManager = function(name) {
   this.refs = {}
   this.handle = 1;
@@ -48,9 +51,13 @@ var HandleManager = function(name) {
 var RMIServerHandles = new HandleManager('srv')
 var RMIClientHandles = new HandleManager('clt')
 
+RMI ={}
+RMI.once = function(fn) {
+  return fn
+}
                     
 
-asRMI = function(handles, invoke) {
+asRMI = function(handles) {
   return function() {
     var recurse = function(val) {
       if (typeof(val) == 'function') {
@@ -67,10 +74,8 @@ asRMI = function(handles, invoke) {
       } else if (typeof(val) == 'object') {
         return function(val) {
           dst = { __RmiObject__: handles.addRef(val) } 
-          val.__RmiInvoke__ = invoke
           for(var key in val) {
             if (key == 'asRMI') { continue; }
-            if (key == '__RmiInvoke__') { continue; }
             dst[key] = recurse(val[key])
           }
           return dst
@@ -117,20 +122,20 @@ console.log('RETURN_VALUE:'+JSON.stringify(value)+":"+ret.__RmiFunction__)
 }
 
 var RMIServer = {
-  build: function(obj, invoke) {
-   obj.asRMI = asRMI(RMIServerHandles, invoke);
+  build: function(obj) {
+   obj.asRMI = asRMI(RMIServerHandles);
    return obj;
   },
   invoke: function(str) {
-    var invokation = JSON.parse(str, toRMI(RMIServerHandles, function(obj) {
+    var invocation = JSON.parse(str, toRMI(RMIServerHandles, function(obj) {
       RMIClient.invoke(JSON.stringify(obj))
     })) 
-    console.log('RMIServer.Invocation:'+str)
-    var obj = RMIServerHandles.getRef(invokation.obj)
-    var func = RMIServerHandles.getRef(invokation.func)
-    console.log("obj:"+obj)
-    console.log("func:"+func)
-    invokation.ret(func.apply(obj, invokation.args))
+    //console.log('RMIServer.Invocation:'+str)
+    var obj = RMIServerHandles.getRef(invocation.obj)
+    var func = RMIServerHandles.getRef(invocation.func)
+    //console.log("obj:"+obj)
+    //console.log("func:"+func)
+    invocation.ret(func.apply(obj, invocation.args))
   }
 }
 
@@ -139,37 +144,63 @@ var RMIClient = {
     return JSON.parse(str, toRMI(RMIClientHandles, invoked))
   },
   invoke: function(str) {
-    console.log('RMIClient:invoke:'+str)
-    var invokation = JSON.parse(str, toRMI(RMIClientHandles, function(obj) {
+    //console.log('RMIClient:invoke:'+str)
+    var invocation = JSON.parse(str, toRMI(RMIClientHandles, function(obj) {
       RMIServer.invoke(JSON.stringify(obj))
     }))
-    var obj = RMIClientHandles.getRef(invokation.obj) || {}
-    var func = RMIClientHandles.getRef(invokation.func)
-    console.log("obj:"+obj)
-    console.log("func:"+func)
-    func.apply(obj, invokation.args)
+    var obj = RMIClientHandles.getRef(invocation.obj) || {}
+    var func = RMIClientHandles.getRef(invocation.func)
+    //console.log("obj:"+obj)
+    //console.log("func:"+func)
+    func.apply(obj, invocation.args)
   }
 }
 
-var srv = RMIServer.build(new BaseTest('meno'), function(obj, func, args) {
-})
+var srv = RMIServer.build(new BaseTest('meno'))
 
 json = JSON.stringify(srv.asRMI())
 
 var clt = RMIClient.build(json, function(obj) {
   var json = JSON.stringify(obj)
-console.log('client:invokation:'+json)
+//console.log('client:invocation:'+json)
   return RMIServer.invoke(json)
 })
 
-/*var ret = clt.createDB('meno', function() {
-  console.log('callback on created')
+/*
+var ret = clt.createDB('meno', RMI.once(function() {
+  console.log('createDB:callback')
+}))
+ret.value(function(value) {
+  console.log('createDB:return:'+JSON.stringify(value))
+  value.save('meno', RMI.once(function(done) {
+    console.log('createDB:save:'+done)
+  }))
 })
+
 */
+
+for(var i = 0; i < 1; ++i) {
 ret = clt.getLevel()
 
 ret.value(function(value) {
-  value().value(function(value) { console.log('f-callback:'+value) }) 
+  value().value(function(value) { 
+ //   console.log('f-callback:'+value) 
+  }) 
 })
+
+if (!(i % 1000)) {
+  var j = 0
+  var k = 0
+  for(var ref in RMIClientHandles.refs) { ++j }
+  for(var ref in RMIServerHandles.refs) { 
+   console.log(ref,  RMIServerHandles.refs[ref])
+   ++k 
+  }
+  console.log('C:'+j+":S:"+k)
+  console.log('C:'+JSON.stringify(RMIClientHandles.refs))
+  console.log("S:"+JSON.stringify(RMIServerHandles.refs))
+}
+}
+
 
 
